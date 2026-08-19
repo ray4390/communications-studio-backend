@@ -18,6 +18,7 @@ import {
   discordAuthorizeUrl,
   discordBotGuildMember,
   discordOauthGuildMember,
+  discordSearchGuildMembers,
   discordUser,
   exchangeDiscordCode,
   exchangeRobloxCode,
@@ -96,6 +97,16 @@ function authorizationUnavailable(message, cause) {
   return error;
 }
 
+function robloxRoleNameMap(groupRoles = []) {
+  const map = new Map();
+  for (const membership of groupRoles) {
+    const groupId = String(membership?.group?.id ?? membership?.groupId ?? '');
+    const roleName = String(membership?.role?.name ?? membership?.roleName ?? '');
+    if (groupId && roleName) map.set(groupId, roleName);
+  }
+  return map;
+}
+
 async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = false } = {}) {
   const accounts = Object.fromEntries(accountsForUser(userId).map((account) => [account.provider, account]));
   const discord = accounts.discord || null;
@@ -162,11 +173,19 @@ async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = 
     }
   }
 
+  const roleNames = robloxRoleNameMap(robloxRoles);
   const identities = authorizedIdentities({
     discordRoleIds,
     robloxUserId: roblox?.provider_user_id || null,
     robloxGroupRoles: robloxRoles
-  }).map((identity) => enrichIdentityRouting(identity, config));
+  }).map((identity) => {
+    const definition = getIdentity(identity.id);
+    const position = definition?.access?.type === 'roblox'
+      ? (roleNames.get(String(definition.access.groupId)) || identity.label)
+      : identity.label;
+    const officeEmoji = `:${definition?.initials || identity.avatar_initials || String(identity.id).toUpperCase()}:`;
+    return enrichIdentityRouting({ ...identity, position, office_emoji: officeEmoji }, config);
+  });
 
   return {
     accounts,
@@ -211,6 +230,27 @@ function sessionUserShape(userId, authz) {
   };
 }
 
+function publicGuildMember(member) {
+  const user = member?.user || {};
+  const id = String(user.id || '');
+  if (!id) return null;
+  const displayName = String(member?.nick || user.global_name || user.username || 'Discord User');
+  let avatarUrl = '';
+  if (member?.avatar) {
+    avatarUrl = `https://cdn.discordapp.com/guilds/${config.discord.guildId}/users/${id}/avatars/${member.avatar}.png?size=64`;
+  } else if (user.avatar) {
+    avatarUrl = `https://cdn.discordapp.com/avatars/${id}/${user.avatar}.png?size=64`;
+  }
+  return {
+    id,
+    username: String(user.username || ''),
+    display_name: displayName,
+    nickname: String(member?.nick || ''),
+    global_name: String(user.global_name || ''),
+    avatar_url: avatarUrl
+  };
+}
+
 function validateBuilderDocument(document) {
   if (!document || typeof document !== 'object') return 'builder_document_required';
   if (!Array.isArray(document.containers) || document.containers.length !== 1) return 'exactly_one_container_required';
@@ -218,6 +258,11 @@ function validateBuilderDocument(document) {
   if (!container || container.kind !== 'container') return 'invalid_container';
   const children = Array.isArray(container.children) ? container.children : [];
   if (children.some((child) => child?.kind === 'file')) return 'file_components_not_allowed';
+  const message = document.message || {};
+  if (![message.headerTitle, message.addressLine1, message.addressLine2].every((value) => String(value || '').trim())) {
+    return 'required_header_fields_missing';
+  }
+  if (Array.isArray(message.userPings) && message.userPings.length > 25) return 'too_many_user_mentions';
   return null;
 }
 
@@ -251,6 +296,28 @@ app.get('/api/identities', async (req, res, next) => {
       return res.status(403).json({ error: 'discord_guild_membership_required', identities: [] });
     }
     res.json({ identities: authz.identities });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/members/search', async (req, res, next) => {
+  try {
+    const session = sessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: 'authentication_required' });
+    const authz = await freshAuthorization(session.user_id);
+    const user = sessionUserShape(session.user_id, authz);
+    if (!user.studio_access) return res.status(403).json({ error: 'discord_guild_membership_required', members: [] });
+    const query = String(req.query.q || '').trim().slice(0, 100);
+    if (query.length < 2) return res.json({ members: [] });
+    if (!config.discord.botToken) return res.status(503).json({ error: 'discord_bot_unavailable', members: [] });
+    const members = await discordSearchGuildMembers(query, 20);
+    res.json({
+      members: members
+        .filter((member) => !member?.user?.bot)
+        .map(publicGuildMember)
+        .filter(Boolean)
+    });
   } catch (error) {
     next(error);
   }
@@ -407,6 +474,19 @@ app.post('/api/publish', async (req, res, next) => {
     const routing = validatePublishRouting(identityId, req.body, config);
     if (!routing.ok) return res.status(403).json({ error: routing.error });
 
+    const requestedUserPingIds = [...new Set(
+      (Array.isArray(req.body?.user_ping_ids) ? req.body.user_ping_ids : [])
+        .map(String)
+        .filter(Boolean)
+    )];
+    if (requestedUserPingIds.length > 25) return res.status(400).json({ error: 'too_many_user_mentions' });
+    if (requestedUserPingIds.some((id) => !/^\d{5,25}$/.test(id))) return res.status(400).json({ error: 'invalid_user_mention' });
+    if (requestedUserPingIds.length) {
+      const members = await Promise.all(requestedUserPingIds.map((id) => discordBotGuildMember(id)));
+      if (members.some((member) => !member)) return res.status(400).json({ error: 'user_mention_not_in_guild' });
+    }
+    routing.allowed_mentions.users = requestedUserPingIds;
+
     const documentError = validateBuilderDocument(req.body?.builder_document);
     if (documentError) return res.status(400).json({ error: documentError });
 
@@ -417,6 +497,7 @@ app.post('/api/publish', async (req, res, next) => {
       identity_id: identityId,
       channel_id: routing.channel_id,
       selected_ping_role_ids: routing.pings.map((ping) => ping.id),
+      selected_ping_user_ids: requestedUserPingIds,
       ping_everyone: routing.ping_everyone
     });
   } catch (error) {
