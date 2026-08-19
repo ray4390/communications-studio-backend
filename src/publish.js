@@ -172,7 +172,7 @@ function customEmojiAvatar(identity) {
   return `https://cdn.discordapp.com/emojis/${match[2]}.${extension}?size=128&quality=lossless`;
 }
 
-export function buildDiscordPublishPayload({ document, identity, routing, robloxUsername }) {
+export function buildDiscordPublishPayload({ document, identity, routing, robloxUsername, discordUsername }) {
   const documentError = validatePublishDocument(document);
   if (documentError) throw publishError(documentError, 400);
   if (!identity) throw publishError('identity_not_authorized', 403);
@@ -186,6 +186,7 @@ export function buildDiscordPublishPayload({ document, identity, routing, roblox
   const position = cleanLine(message.position || identity.position || identity.label, 160);
   const roleplayName = cleanLine(message.roleplayName, 100);
   const roblox = cleanLine(robloxUsername || 'Roblox user', 100);
+  const discord = cleanLine(discordUsername || 'unknown', 100).replace(/^@+/, '');
   const userIds = Array.isArray(routing.allowed_mentions?.users) ? routing.allowed_mentions.users.map(String) : [];
   const roleIds = Array.isArray(routing.allowed_mentions?.roles) ? routing.allowed_mentions.roles.map(String) : [];
 
@@ -209,6 +210,7 @@ export function buildDiscordPublishPayload({ document, identity, routing, roblox
     footerLines.push(`*${roblox}*`);
   }
   footerLines.push(`-# ${officeEmoji} ${position}`);
+  footerLines.push(`-# Posted by @${discord}`);
 
   const source = document.containers[0];
   const body = source.children.map(componentPayload);
@@ -319,8 +321,8 @@ async function executeWebhook(channelId, payload, retry = true) {
   }
 }
 
-export async function publishToDiscord({ document, identity, routing, robloxUsername }) {
-  const payload = buildDiscordPublishPayload({ document, identity, routing, robloxUsername });
+export async function publishToDiscord({ document, identity, routing, robloxUsername, discordUsername }) {
+  const payload = buildDiscordPublishPayload({ document, identity, routing, robloxUsername, discordUsername });
   const message = await executeWebhook(routing.channel_id, payload);
   const messageId = String(message?.id || '');
   if (!messageId) throw publishError('discord_publish_response_invalid', 502);
