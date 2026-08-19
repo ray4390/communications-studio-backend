@@ -14,7 +14,15 @@ This service owns authentication, account linking, publishing authorization, Dis
 - FEC/NARA Discord-role-controlled access
 - Docker/Compose deployment and Caddy reverse-proxy example
 - Automated policy/routing tests
-- `/api/publish` authorization gate (Discord send is intentionally disabled until bot/application credentials are configured)
+- `/api/publish` authorization gate with forced publish-time authorization refresh
+- Actual Discord delivery intentionally disabled until the application/webhook publication mechanism is finalized
+
+## Documentation
+
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — Linux/Docker/Caddy production runbook
+- [`docs/DISCORD_APP_SETUP.md`](docs/DISCORD_APP_SETUP.md) — what to configure in the Discord Developer Portal
+- [`docs/PUBLISHING_POLICY.md`](docs/PUBLISHING_POLICY.md) — publishing identities, ranks, channels, and ping policy
+- [`docs/API.md`](docs/API.md) — frontend/backend API contract
 
 ## Canonical Discord configuration
 
@@ -42,6 +50,7 @@ FEC may use `@everyone` and any combination of the four approved ping roles. NAR
 ```bash
 cp .env.example .env
 npm install
+npm run check
 npm test
 npm start
 ```
@@ -52,4 +61,4 @@ Default local API: `http://127.0.0.1:8787`.
 
 The service is designed to run behind HTTPS on the Linux server using Docker Compose and a reverse proxy. Never commit `.env`, bot tokens, OAuth client secrets, webhook tokens, or other credentials.
 
-See `DEPLOYMENT.md` for deployment and application setup.
+Start with [`DEPLOYMENT.md`](DEPLOYMENT.md).
