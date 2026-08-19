@@ -78,6 +78,7 @@ export function validateRuntimeConfig() {
   const problems = [];
   if (!config.discord.clientId || !config.discord.clientSecret) problems.push('Discord OAuth is not fully configured.');
   if (!config.discord.guildId) problems.push('The USAR Discord guild ID is not configured.');
+  if (!config.discord.botToken) problems.push('Discord bot token is not configured; authoritative publish-time guild role checks are unavailable.');
   if (!config.roblox.clientId || !config.roblox.clientSecret) problems.push('Roblox OAuth is not fully configured.');
   if (config.cookieSameSite === 'none' && !config.cookieSecure) problems.push('SameSite=None cookies require COOKIE_SECURE=true in browsers.');
   for (const [key, channelId] of Object.entries(config.channels)) if (!channelId) problems.push(`Discord channel ${key} is not configured.`);
