@@ -65,7 +65,8 @@ test('server renders authoritative Components V2 framing after confirmation', ()
     document,
     identity,
     routing,
-    robloxUsername: 'RobloxTestUser'
+    robloxUsername: 'RobloxTestUser',
+    discordUsername: 'discord.test'
   });
 
   assert.equal(payload.flags, 32768);
@@ -86,4 +87,5 @@ test('server renders authoritative Components V2 framing after confirmation', ()
   assert.match(footer, /\*Test Publisher\*/);
   assert.match(footer, /-# RobloxTestUser/);
   assert.match(footer, /Attorney General of the United States/);
+  assert.match(footer, /-# Posted by @discord\.test/);
 });
