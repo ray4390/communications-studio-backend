@@ -40,6 +40,7 @@ function countComponent(component) {
 
 export function validatePublishDocument(document) {
   if (!document || typeof document !== 'object') return 'builder_document_required';
+  if (document._publish_confirmation !== 'explicit-user-confirmation') return 'explicit_publish_confirmation_required';
   if (!Array.isArray(document.containers) || document.containers.length !== 1) return 'exactly_one_container_required';
   const container = document.containers[0];
   if (!container || container.kind !== 'container') return 'invalid_container';
