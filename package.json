@@ -7,10 +7,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node --import ./src/instrument.js src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node --import ./src/instrument.js --import ./src/identity-logos.js src/server.js",
+    "dev": "node --import ./src/identity-logos.js --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/config.js && node --check src/db.js && node --check src/policy.js && node --check src/providers.js && node --check src/routing.js && node --check src/publish.js && node --check src/instrument.js"
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/db.js && node --check src/policy.js && node --check src/providers.js && node --check src/routing.js && node --check src/publish.js && node --check src/identity-logos.js && node --check src/instrument.js"
   },
   "dependencies": {
     "@sentry/node": "^10.69.0",
