@@ -44,7 +44,9 @@ export async function discordUser(accessToken) {
 export async function discordOauthGuildMember(accessToken) {
   if (!config.discord.guildId) return null;
   try {
-    return await jsonFetch(`https://discord.com/api/v10/users/@me/guilds/${config.discord.guildId}/member`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    return await jsonFetch(`https://discord.com/api/v10/users/@me/guilds/${config.discord.guildId}/member`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
   } catch (error) {
     if (error.status === 404 || error.status === 403) return null;
     throw error;
@@ -54,9 +56,13 @@ export async function discordOauthGuildMember(accessToken) {
 export async function discordBotGuildMember(userId) {
   if (!config.discord.botToken || !config.discord.guildId || !userId) return null;
   try {
-    return await jsonFetch(`https://discord.com/api/v10/guilds/${config.discord.guildId}/members/${userId}`, { headers: { Authorization: `Bot ${config.discord.botToken}` } });
+    return await jsonFetch(`https://discord.com/api/v10/guilds/${config.discord.guildId}/members/${userId}`, {
+      headers: { Authorization: `Bot ${config.discord.botToken}` }
+    });
   } catch (error) {
-    if (error.status === 404 || error.status === 403) return null;
+    if (error.status === 404) return null;
+    // 401/403 means our application credentials or guild access are broken,
+    // not that the target user lacks membership. Let the caller fail closed.
     throw error;
   }
 }
@@ -82,11 +88,16 @@ export function robloxAuthorizeUrl(state, challenge) {
 
 export async function exchangeRobloxCode(code, verifier) {
   const body = new URLSearchParams({
-    grant_type: 'authorization_code', code, code_verifier: verifier,
-    client_id: config.roblox.clientId, client_secret: config.roblox.clientSecret
+    grant_type: 'authorization_code',
+    code,
+    code_verifier: verifier,
+    client_id: config.roblox.clientId,
+    client_secret: config.roblox.clientSecret
   });
   return jsonFetch('https://apis.roblox.com/oauth/v1/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
   });
 }
 
