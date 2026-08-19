@@ -78,6 +78,18 @@ export async function discordSearchGuildMembers(query, limit = 20) {
   return Array.isArray(data) ? data : [];
 }
 
+let guildEmojiCache = { expiresAt: 0, items: [] };
+export async function discordGuildEmojis() {
+  if (!config.discord.botToken || !config.discord.guildId) return [];
+  if (guildEmojiCache.expiresAt > Date.now()) return guildEmojiCache.items;
+  const data = await jsonFetch(`https://discord.com/api/v10/guilds/${config.discord.guildId}/emojis`, {
+    headers: { Authorization: `Bot ${config.discord.botToken}` }
+  });
+  const items = Array.isArray(data) ? data : [];
+  guildEmojiCache = { expiresAt: Date.now() + 5 * 60_000, items };
+  return items;
+}
+
 export function pkcePair() {
   const verifier = crypto.randomBytes(48).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
