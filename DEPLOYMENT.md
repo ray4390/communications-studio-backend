@@ -101,8 +101,17 @@ Roblox is used to link the user's Roblox identity and resolve the curated group/
 
 ## 6. Start the API
 
+The production image runs as the non-root `node` user (UID 1000). Create the host data directory before first start so SQLite can write to it:
+
 ```bash
 cd /opt/communications-studio-backend
+mkdir -p data
+sudo chown 1000:1000 data
+```
+
+Then build and start:
+
+```bash
 docker compose -f compose.yml build
 docker compose -f compose.yml up -d
 ```
