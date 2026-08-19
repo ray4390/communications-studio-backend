@@ -1,0 +1,126 @@
+name: Validate and Deploy Communications Studio Backend
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the validated main commit to production
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: communications-studio-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate production helpers
+        shell: bash
+        run: bash -n scripts/production-systemd-control.sh scripts/activate-production-autodeploy.sh
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Syntax checks
+        run: npm run check
+
+      - name: Unit tests
+        env:
+          SENTRY_DSN: ''
+        run: npm test
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  deploy:
+    name: Deploy through systemd
+    needs: validate
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true) }}
+    runs-on: [self-hosted, linux, ray-server, production, communications-studio]
+    environment: production
+    timeout-minutes: 10
+    env:
+      CONTROL: /usr/local/bin/communications-studio-systemd-control
+      SENTINEL: /home/deploy/.communications-studio-autodeploy-enabled
+    steps:
+      - name: Verify production activation
+        id: activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$SENTINEL" ]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo 'Communications Studio production auto-deploy is enabled.'
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Communications Studio production auto-deploy is disabled; deployment will be skipped.'
+          fi
+
+      - name: Deploy exact validated commit
+        if: steps.activation.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$CONTROL" || { echo 'Production control helper is not provisioned.'; exit 1; }
+          sudo "$CONTROL" status
+          sudo "$CONTROL" deploy "$GITHUB_SHA"
+          sudo "$CONTROL" status
+          sudo "$CONTROL" logs
+          echo 'Production health gate passed.'
+
+      - name: Capture service logs on failure
+        if: failure() && steps.activation.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          sudo "$CONTROL" status || true
+          sudo "$CONTROL" logs || true
+
+      - name: Publish production deployment status
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_ENABLED: ${{ steps.activation.outputs.enabled }}
+          DEPLOY_JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ENABLED" != 'true' ]; then
+            state='error'
+            description='Production auto-deploy activation is disabled'
+          elif [ "$DEPLOY_JOB_STATUS" = 'success' ]; then
+            state='success'
+            description='Production systemd health gate passed'
+          else
+            state='failure'
+            description='Production deploy or health gate failed'
+          fi
+          payload=$(printf '{"state":"%s","context":"production-deploy","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$state" "$description" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$payload"
