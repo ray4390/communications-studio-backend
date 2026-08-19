@@ -17,6 +17,7 @@ import { enrichIdentityRouting, validatePublishRouting } from './routing.js';
 import {
   discordAuthorizeUrl,
   discordBotGuildMember,
+  discordGuildEmojis,
   discordOauthGuildMember,
   discordSearchGuildMembers,
   discordUser,
@@ -107,6 +108,18 @@ function robloxRoleNameMap(groupRoles = []) {
   return map;
 }
 
+function normalizedEmojiName(value) {
+  return String(value || '').replace(/[^A-Za-z0-9_]/g, '').toLowerCase();
+}
+
+function emojiTokenForIdentity(definition, emojis = []) {
+  const preferred = normalizedEmojiName(definition?.initials || definition?.id);
+  const fallbackName = String(definition?.initials || definition?.id || 'USAR').replace(/[^A-Za-z0-9_]/g, '') || 'USAR';
+  const match = emojis.find((emoji) => emoji?.id && emoji?.available !== false && normalizedEmojiName(emoji.name) === preferred);
+  if (!match) return `:${fallbackName}:`;
+  return `<${match.animated ? 'a' : ''}:${match.name}:${match.id}>`;
+}
+
 async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = false } = {}) {
   const accounts = Object.fromEntries(accountsForUser(userId).map((account) => [account.provider, account]));
   const discord = accounts.discord || null;
@@ -173,6 +186,15 @@ async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = 
     }
   }
 
+  let guildEmojis = [];
+  if (config.discord.botToken && config.discord.guildId) {
+    try {
+      guildEmojis = await discordGuildEmojis();
+    } catch (error) {
+      console.warn('Discord emoji lookup failed; using text emoji names:', error.message);
+    }
+  }
+
   const roleNames = robloxRoleNameMap(robloxRoles);
   const identities = authorizedIdentities({
     discordRoleIds,
@@ -183,7 +205,7 @@ async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = 
     const position = definition?.access?.type === 'roblox'
       ? (roleNames.get(String(definition.access.groupId)) || identity.label)
       : identity.label;
-    const officeEmoji = `:${definition?.initials || identity.avatar_initials || String(identity.id).toUpperCase()}:`;
+    const officeEmoji = emojiTokenForIdentity(definition, guildEmojis);
     return enrichIdentityRouting({ ...identity, position, office_emoji: officeEmoji }, config);
   });
 
