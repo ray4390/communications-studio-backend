@@ -474,6 +474,9 @@ app.post('/api/publish', async (req, res, next) => {
   try {
     const session = sessionFromRequest(req);
     if (!session) return res.status(401).json({ error: 'authentication_required' });
+    if (req.get('X-Communications-Studio-Publish') !== 'confirmed' || req.body?.confirm_publish !== true) {
+      return res.status(400).json({ error: 'explicit_publish_confirmation_required' });
+    }
 
     const identityId = String(req.body?.identity_id || '');
     const requestedIdentity = getIdentity(identityId);
@@ -520,12 +523,14 @@ app.post('/api/publish', async (req, res, next) => {
       document: req.body.builder_document,
       identity: publishingIdentity,
       routing,
-      robloxUsername: authz.accounts.roblox?.username || ''
+      robloxUsername: authz.accounts.roblox?.username || '',
+      discordUsername: authz.accounts.discord?.username || ''
     });
 
     console.log(JSON.stringify({
       event: 'communications_studio_publish',
       user_id: session.user_id,
+      discord_user_id: authz.accounts.discord?.provider_user_id || null,
       identity_id: identityId,
       channel_id: published.channel_id,
       message_id: published.message_id
