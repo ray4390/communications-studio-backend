@@ -78,9 +78,9 @@ identify
 guilds.members.read
 ```
 
-For the bot-side role refresh, enable the **Server Members Intent** in the Developer Portal. The backend reads a user's current membership and role IDs from the target guild before exposing publishing identities and again before publishing.
+The backend does **not** currently need to connect to Discord's Gateway or run a separate `discord.js` process. It uses the bot token through Discord's HTTP API to fetch one specific guild member when it needs a fresh role check. Therefore the current authorization phase does not require Message Content Intent, Presence Intent, or Server Members Intent.
 
-Do not give the bot Administrator. For the current authorization phase it needs only enough server access to resolve membership. The future publication phase will additionally need access to the approved publication channels and webhook-management/send permissions; those permissions should be scoped to the five approved publication channels rather than the entire server where possible.
+Do not give the bot Administrator. During the authorization-only phase, simply install the bot in the USAR guild and keep the token available to the backend. The future publication phase will additionally need access to the approved publication channels and webhook-management/send permissions; those permissions should be scoped to the five approved publication channels rather than the entire server wherever possible.
 
 ## 5. Roblox OAuth setup
 
