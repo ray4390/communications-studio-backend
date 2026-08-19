@@ -89,7 +89,14 @@ function clearStateCookie(res, provider) {
   res.clearCookie(stateCookie(provider), cookieOptions());
 }
 
-async function freshAuthorization(userId) {
+function authorizationUnavailable(message, cause) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.code = 'AUTHORIZATION_UNAVAILABLE';
+  error.status = 503;
+  return error;
+}
+
+async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = false } = {}) {
   const accounts = Object.fromEntries(accountsForUser(userId).map((account) => [account.provider, account]));
   const discord = accounts.discord || null;
   const roblox = accounts.roblox || null;
@@ -100,20 +107,35 @@ async function freshAuthorization(userId) {
     : [];
   let discordInGuild = Boolean(discord?.metadata?.in_guild);
 
-  if (discord && config.discord.botToken) {
+  if (discord) {
     const checkedAt = Number(discord.metadata?.roles_checked_at || 0);
-    if (now - checkedAt >= config.authzCacheSeconds * 1000) {
-      const member = await discordBotGuildMember(discord.provider_user_id);
-      discordRoleIds = Array.isArray(member?.roles) ? member.roles.map(String) : [];
-      discordInGuild = Boolean(member);
-      const next = {
-        ...discord.metadata,
-        role_ids: discordRoleIds,
-        in_guild: discordInGuild,
-        roles_checked_at: now
-      };
-      updateAccountMetadata(userId, 'discord', next);
-      discord.metadata = next;
+    const needsRefresh = forceDiscord || now - checkedAt >= config.authzCacheSeconds * 1000;
+
+    if (needsRefresh) {
+      if (!config.discord.botToken) {
+        if (forceDiscord) {
+          throw authorizationUnavailable('Discord bot token is unavailable for the required publish-time role check.');
+        }
+      } else {
+        try {
+          const member = await discordBotGuildMember(discord.provider_user_id);
+          discordRoleIds = Array.isArray(member?.roles) ? member.roles.map(String) : [];
+          discordInGuild = Boolean(member);
+          const next = {
+            ...discord.metadata,
+            role_ids: discordRoleIds,
+            in_guild: discordInGuild,
+            roles_checked_at: now
+          };
+          updateAccountMetadata(userId, 'discord', next);
+          discord.metadata = next;
+        } catch (error) {
+          if (forceDiscord) {
+            throw authorizationUnavailable('Discord guild membership could not be verified.', error);
+          }
+          console.warn('Discord role refresh failed; using cached roles:', error.message);
+        }
+      }
     }
   }
 
@@ -123,13 +145,18 @@ async function freshAuthorization(userId) {
 
   if (roblox) {
     const checkedAt = Number(roblox.metadata?.roles_checked_at || 0);
-    if (now - checkedAt >= config.authzCacheSeconds * 1000) {
+    const needsRefresh = forceRoblox || now - checkedAt >= config.authzCacheSeconds * 1000;
+
+    if (needsRefresh) {
       try {
         robloxRoles = await robloxGroupRoles(roblox.provider_user_id);
         const next = { ...roblox.metadata, group_roles: robloxRoles, roles_checked_at: now };
         updateAccountMetadata(userId, 'roblox', next);
         roblox.metadata = next;
       } catch (error) {
+        if (forceRoblox) {
+          throw authorizationUnavailable('Roblox group membership could not be verified.', error);
+        }
         console.warn('Roblox role refresh failed; using cached roles:', error.message);
       }
     }
@@ -358,14 +385,22 @@ app.post('/api/publish', async (req, res, next) => {
     const session = sessionFromRequest(req);
     if (!session) return res.status(401).json({ error: 'authentication_required' });
 
-    const authz = await freshAuthorization(session.user_id);
+    const identityId = String(req.body?.identity_id || '');
+    const requestedIdentity = getIdentity(identityId);
+    if (!requestedIdentity) {
+      return res.status(403).json({ error: 'identity_not_authorized' });
+    }
+
+    const authz = await freshAuthorization(session.user_id, {
+      forceDiscord: true,
+      forceRoblox: requestedIdentity.access?.type === 'roblox'
+    });
     const user = sessionUserShape(session.user_id, authz);
+
     if (!user.studio_access) {
       return res.status(403).json({ error: 'discord_guild_membership_required' });
     }
-
-    const identityId = String(req.body?.identity_id || '');
-    if (!getIdentity(identityId) || !user.allowed_identity_ids.includes(identityId)) {
+    if (!user.allowed_identity_ids.includes(identityId)) {
       return res.status(403).json({ error: 'identity_not_authorized' });
     }
 
@@ -391,7 +426,8 @@ app.post('/api/publish', async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  const status = error.code === 'ACCOUNT_ALREADY_LINKED' || error.code === 'PROVIDER_ALREADY_LINKED' ? 409 : 500;
+  const conflict = error.code === 'ACCOUNT_ALREADY_LINKED' || error.code === 'PROVIDER_ALREADY_LINKED';
+  const status = Number(error.status) || (conflict ? 409 : 500);
   res.status(status).json({
     error: error.code || 'internal_error',
     message: config.nodeEnv === 'development' ? error.message : undefined
