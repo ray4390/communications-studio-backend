@@ -67,23 +67,21 @@ export async function discordBotGuildMember(userId) {
   }
 }
 
+export async function discordSearchGuildMembers(query, limit = 20) {
+  if (!config.discord.botToken || !config.discord.guildId) return [];
+  const clean = String(query || '').trim().slice(0, 100);
+  if (!clean) return [];
+  const params = new URLSearchParams({ query: clean, limit: String(Math.max(1, Math.min(100, Number(limit) || 20))) });
+  const data = await jsonFetch(`https://discord.com/api/v10/guilds/${config.discord.guildId}/members/search?${params}`, {
+    headers: { Authorization: `Bot ${config.discord.botToken}` }
+  });
+  return Array.isArray(data) ? data : [];
+}
+
 export function pkcePair() {
   const verifier = crypto.randomBytes(48).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
   return { verifier, challenge };
-}
-
-export function robloxAuthorizeUrl(state, challenge) {
-  const query = new URLSearchParams({
-    client_id: config.roblox.clientId,
-    redirect_uri: config.roblox.redirectUri,
-    scope: 'openid profile',
-    response_type: 'code',
-    state,
-    code_challenge: challenge,
-    code_challenge_method: 'S256'
-  });
-  return `https://apis.roblox.com/oauth/v1/authorize?${query}`;
 }
 
 export async function exchangeRobloxCode(code, verifier) {
@@ -99,6 +97,19 @@ export async function exchangeRobloxCode(code, verifier) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
   });
+}
+
+export function robloxAuthorizeUrl(state, challenge) {
+  const query = new URLSearchParams({
+    client_id: config.roblox.clientId,
+    redirect_uri: config.roblox.redirectUri,
+    scope: 'openid profile',
+    response_type: 'code',
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256'
+  });
+  return `https://apis.roblox.com/oauth/v1/authorize?${query}`;
 }
 
 export async function robloxUserInfo(accessToken) {
