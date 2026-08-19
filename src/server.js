@@ -14,6 +14,7 @@ import {
 } from './db.js';
 import { authorizedIdentities, getIdentity } from './policy.js';
 import { enrichIdentityRouting, validatePublishRouting } from './routing.js';
+import { publishToDiscord } from './publish.js';
 import {
   discordAuthorizeUrl,
   discordBotGuildMember,
@@ -493,6 +494,9 @@ app.post('/api/publish', async (req, res, next) => {
       return res.status(403).json({ error: 'identity_not_authorized' });
     }
 
+    const publishingIdentity = authz.identities.find((identity) => identity.id === identityId) || null;
+    if (!publishingIdentity) return res.status(403).json({ error: 'identity_not_authorized' });
+
     const routing = validatePublishRouting(identityId, req.body, config);
     if (!routing.ok) return res.status(403).json({ error: routing.error });
 
@@ -512,15 +516,25 @@ app.post('/api/publish', async (req, res, next) => {
     const documentError = validateBuilderDocument(req.body?.builder_document);
     if (documentError) return res.status(400).json({ error: documentError });
 
-    // Deliberately disabled until the Discord application/webhook publishing
-    // layer is configured. Everything above this point is production policy.
-    return res.status(501).json({
-      error: 'publishing_not_configured',
+    const published = await publishToDiscord({
+      document: req.body.builder_document,
+      identity: publishingIdentity,
+      routing,
+      robloxUsername: authz.accounts.roblox?.username || ''
+    });
+
+    console.log(JSON.stringify({
+      event: 'communications_studio_publish',
+      user_id: session.user_id,
       identity_id: identityId,
-      channel_id: routing.channel_id,
-      selected_ping_role_ids: routing.pings.map((ping) => ping.id),
-      selected_ping_user_ids: requestedUserPingIds,
-      ping_everyone: routing.ping_everyone
+      channel_id: published.channel_id,
+      message_id: published.message_id
+    }));
+
+    return res.status(201).json({
+      ok: true,
+      identity_id: identityId,
+      ...published
     });
   } catch (error) {
     next(error);
