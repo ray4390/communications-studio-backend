@@ -20,7 +20,7 @@ export const IDENTITY_LOGO_FILES = Object.freeze({
   "dss": "Seal of the United States Diplomatic Security Service.svg",
   "dod": "Seal of the United States Department of Defense.svg",
   "us_military": "Joint Chiefs of Staff seal (2).svg",
-  "dcng": "JFHQ-DC National Guard Emblem.png",
+  "dcng": "https://media.defense.gov/2018/Oct/25/2002055533/-1/-1/0/180119-Z-GP431-2002.JPG",
   "army": "Seal of the US Department of the Army.svg",
   "navy": "Seal of the United States Department of the Navy.svg",
   "air_force": "Seal of the United States Department of the Air Force.svg",
@@ -29,11 +29,11 @@ export const IDENTITY_LOGO_FILES = Object.freeze({
   "dia": "US-DefenseIntelligenceAgency-Seal.svg",
   "nsa": "National Security Agency.svg",
   "pfpa": "Seal of the Pentagon Force Protection Agency.png",
-  "dcis": "DCIS LOGO old.jpg",
+  "dcis": "USA - DCIS SA.png",
   "dod_oig": "Seal of DOD OIG.svg",
   "odni": "Seal of the Office of the Director of National Intelligence.svg",
   "cia": "Seal of the Central Intelligence Agency.svg",
-  "house": "Seal of the United States House of Representatives.svg",
+  "house": "United States House of Representatives seal.svg",
   "senate": "Seal of the United States Senate.svg",
   "uscp": "Emblem of the United States Capitol Police.svg",
   "uscp_oig": "Emblem of the United States Capitol Police.svg",
@@ -44,10 +44,10 @@ export const IDENTITY_LOGO_FILES = Object.freeze({
 });
 
 export function identityLogoUrl(id) {
-  const filename = IDENTITY_LOGO_FILES[String(id || '')];
-  return filename
-    ? `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(filename)}?width=512`
-    : '';
+  const source = IDENTITY_LOGO_FILES[String(id || '')];
+  if (!source) return '';
+  if (/^https:\/\//i.test(source)) return source;
+  return `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(source)}?width=512`;
 }
 
 // Production bootstrap: publicIdentity() reads avatarUrl from these same
