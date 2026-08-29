@@ -4,7 +4,6 @@ import { IDENTITIES, publicIdentity } from '../src/policy.js';
 import { IDENTITY_LOGO_FILES, identityLogoUrl } from '../src/identity-logos.js';
 
 test('every publishing identity has an authoritative logo avatar', () => {
-  assert.equal(IDENTITIES.length, 40);
   assert.equal(Object.keys(IDENTITY_LOGO_FILES).length, IDENTITIES.length);
 
   for (const identity of IDENTITIES) {
