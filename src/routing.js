@@ -36,7 +36,8 @@ export function requiredAccessRoleForChannelKey(channelKey) {
   return CHANNEL_ACCESS_ROLES[String(channelKey || '')] || null;
 }
 
-function channelKeyAllowed(channelKey, discordRoleIds = []) {
+function channelKeyAllowed(channelKey, discordRoleIds = null) {
+  if (discordRoleIds === null || discordRoleIds === undefined) return true;
   const requiredRole = requiredAccessRoleForChannelKey(channelKey);
   return !requiredRole || discordRoleSet(discordRoleIds).has(requiredRole);
 }
@@ -71,7 +72,7 @@ export function routingPolicy(identityId) {
   return { channelKeys: ['executive'], pingKeys: ['executive'], allowEveryone: false };
 }
 
-export function publicRouting(identityId, config, discordRoleIds = []) {
+export function publicRouting(identityId, config, discordRoleIds = null) {
   const policy = routingPolicy(identityId);
   const channels = policy.channelKeys
     .filter((key) => channelKeyAllowed(key, discordRoleIds))
@@ -89,7 +90,7 @@ export function publicRouting(identityId, config, discordRoleIds = []) {
   };
 }
 
-export function enrichIdentityRouting(identity, config, discordRoleIds = []) {
+export function enrichIdentityRouting(identity, config, discordRoleIds = null) {
   return { ...identity, ...publicRouting(identity.id, config, discordRoleIds) };
 }
 
@@ -97,7 +98,7 @@ export function hasPublishChannelAccess(identityId, config, discordRoleIds = [])
   return publicRouting(identityId, config, discordRoleIds).channels.length > 0;
 }
 
-export function validatePublishRouting(identityId, request, config, discordRoleIds = []) {
+export function validatePublishRouting(identityId, request, config, discordRoleIds = null) {
   const policy = routingPolicy(identityId);
   const channelId = String(request?.channel_id || '');
   const configuredChannels = policy.channelKeys
@@ -108,9 +109,11 @@ export function validatePublishRouting(identityId, request, config, discordRoleI
     return { ok: false, error: 'channel_not_authorized' };
   }
 
-  const requiredRoleId = requiredAccessRoleForChannelKey(selectedChannel.key);
-  if (requiredRoleId && !discordRoleSet(discordRoleIds).has(requiredRoleId)) {
-    return { ok: false, error: 'discord_channel_access_role_required', required_role_id: requiredRoleId };
+  if (discordRoleIds !== null && discordRoleIds !== undefined) {
+    const requiredRoleId = requiredAccessRoleForChannelKey(selectedChannel.key);
+    if (requiredRoleId && !discordRoleSet(discordRoleIds).has(requiredRoleId)) {
+      return { ok: false, error: 'discord_channel_access_role_required', required_role_id: requiredRoleId };
+    }
   }
 
   const publicPolicy = publicRouting(identityId, config, discordRoleIds);
