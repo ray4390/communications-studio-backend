@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config, validateRuntimeConfig } from './config.js';
+import { publicServiceStatus } from './status.js';
 import {
   accountsForUser,
   createAppSession,
@@ -289,14 +290,15 @@ function validateBuilderDocument(document) {
   return null;
 }
 
-app.get('/health', (_req, res) => {
-  res.json({
-    ok: true,
-    service: 'communications-studio-api',
-    guild_id: config.discord.guildId,
-    config_warnings: validateRuntimeConfig()
+function serviceStatus() {
+  return publicServiceStatus({
+    guildId: config.discord.guildId,
+    warnings: validateRuntimeConfig()
   });
-});
+}
+
+app.get('/', (_req, res) => res.json(serviceStatus()));
+app.get('/health', (_req, res) => res.json(serviceStatus()));
 
 app.get('/auth/session', async (req, res, next) => {
   try {

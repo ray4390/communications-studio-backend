@@ -79,7 +79,13 @@ Instrumentation redacts common credential fields and does not enable default PII
 
 The application listens on port `8787`. The current production route is provided by Tailscale Funnel rather than Docker/Caddy.
 
-Keep the backend bound to the server and expose it through the configured Funnel route. Verify public routing separately from the local systemd health check.
+Keep the backend bound to the server and expose it through the configured Funnel route. The bare HTTPS hostname, historical port `10000`, and compatibility path `/communications-studio-api` all route to the same backend. Reconcile those routes as root with:
+
+```bash
+sudo bash scripts/configure-production-funnel.sh
+```
+
+Verify both the bare public endpoint and the dedicated health endpoint separately from the local systemd health check.
 
 ## OAuth configuration
 

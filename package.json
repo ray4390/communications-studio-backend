@@ -4,19 +4,19 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node --import ./src/instrument.js --import ./src/identity-logos.js src/server.js",
     "dev": "node --import ./src/identity-logos.js --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/config.js && node --check src/db.js && node --check src/policy.js && node --check src/providers.js && node --check src/routing.js && node --check src/publish.js && node --check src/identity-logos.js && node --check src/instrument.js"
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/db.js && node --check src/policy.js && node --check src/providers.js && node --check src/routing.js && node --check src/publish.js && node --check src/identity-logos.js && node --check src/instrument.js && node --check src/status.js && bash -n scripts/configure-production-funnel.sh"
   },
   "dependencies": {
-    "@sentry/node": "^10.69.0",
-    "better-sqlite3": "^11.10.0",
+    "@sentry/node": "^10.72.0",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "helmet": "^8.1.0"
   }
