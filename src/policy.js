@@ -52,6 +52,7 @@ export const IDENTITIES = Object.freeze([
 
   { id:'judiciary', category:'Judiciary', label:'United States Courts / Federal Judiciary', displayName:'United States Courts', initials:'USC', color:'#3b4f63', access:R(6071495, ['Court Clerk','Chief Judge','Chief Justice']) },
   { id:'supreme_court', category:'Judiciary', label:'Supreme Court of the United States', displayName:'Supreme Court of the United States', initials:'SCOTUS', color:'#4d443a', access:R(6071495, ['Clerks of the Supreme Court','Associate Justices of the Supreme Court','Chief Justice']) },
+  { id:'ulpa', category:'Judiciary', label:'Uniform Legal Practice Authority', displayName:'Uniform Legal Practice Authority', initials:'ULPA', color:'#12365a', access:D([CHANNEL_ACCESS_ROLES.judicial]) },
 
   { id:'fec', category:'Independent', label:'Federal Election Commission', displayName:'Federal Election Commission', initials:'FEC', color:'#344e73', access:D(FEC_DISCORD_ROLES) },
   { id:'nara', category:'Independent', label:'National Archives and Records Administration', displayName:'National Archives and Records Administration', initials:'NARA', color:'#8b1e2d', avatarUrl:'https://raw.githubusercontent.com/nationalarchivesusar/us-code/main/assets/images/nara.png', access:D(NARA_DISCORD_ROLES) }
