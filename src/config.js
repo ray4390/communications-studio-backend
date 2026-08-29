@@ -36,6 +36,7 @@ const frontendPath = process.env.FRONTEND_PATH || '/';
 export const config = Object.freeze({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: int(process.env.PORT, 8787),
+  compatibilityPort: int(process.env.COMPATIBILITY_PORT, null),
   publicBaseUrl,
   frontendOrigin,
   frontendPath,

@@ -558,7 +558,12 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-app.listen(config.port, '0.0.0.0', () => {
-  console.log(`Communications Studio API listening on :${config.port}`);
-  for (const warning of validateRuntimeConfig()) console.warn(`CONFIG: ${warning}`);
-});
+const listenPorts = [...new Set([config.port, config.compatibilityPort].filter(Number.isInteger))];
+
+for (const port of listenPorts) {
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Communications Studio API listening on :${port}`);
+  });
+}
+
+for (const warning of validateRuntimeConfig()) console.warn(`CONFIG: ${warning}`);

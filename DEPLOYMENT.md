@@ -85,6 +85,11 @@ Keep the backend bound to the server and expose it through the configured Funnel
 sudo bash scripts/configure-production-funnel.sh
 ```
 
+If Funnel administration is temporarily unavailable, set
+`COMPATIBILITY_PORT=3001` in `.env` to serve the pre-existing root Funnel
+target directly. Keep `PORT=8787` so the legacy endpoint and compatibility
+path continue to work.
+
 Verify both the bare public endpoint and the dedicated health endpoint separately from the local systemd health check.
 
 ## OAuth configuration
