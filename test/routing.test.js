@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publicRouting, routingPolicy, validatePublishRouting } from '../src/routing.js';
+import { CHANNEL_ACCESS_ROLES, publicRouting, routingPolicy, validatePublishRouting } from '../src/routing.js';
 
 const config = {
   channels: {
@@ -17,6 +17,15 @@ const config = {
     judicial: '1156346227286360236'
   }
 };
+
+test('Discord branch access role IDs are fixed to the server roles', () => {
+  assert.deepEqual(CHANNEL_ACCESS_ROLES, {
+    executive: '1155312730895548426',
+    white_house: '1155312788554661969',
+    legislative: '1155312851926401154',
+    judicial: '1155312918867493006'
+  });
+});
 
 test('White House is restricted to White House channel and ping', () => {
   const route = publicRouting('white_house', config);
@@ -37,6 +46,39 @@ test('executive agencies and military publish in executive branch', () => {
     assert.deepEqual(route.channels.map((x) => x.id), ['886076674792390707']);
     assert.deepEqual(route.ping_options.map((x) => x.key), ['executive']);
   }
+});
+
+test('role-aware routing exposes only channels covered by Discord access roles', () => {
+  assert.deepEqual(publicRouting('doj', config, []).channels, []);
+  assert.deepEqual(
+    publicRouting('doj', config, [CHANNEL_ACCESS_ROLES.executive]).channels.map((x) => x.key),
+    ['executive']
+  );
+  assert.deepEqual(
+    publicRouting('nara', config, [CHANNEL_ACCESS_ROLES.white_house, CHANNEL_ACCESS_ROLES.judicial]).channels.map((x) => x.key),
+    ['white_house', 'judicial']
+  );
+});
+
+test('role-aware publish validation rejects a missing destination access role', () => {
+  assert.deepEqual(
+    validatePublishRouting('doj', {
+      channel_id: config.channels.executive,
+      ping_keys: [],
+      ping_everyone: false
+    }, config, []),
+    {
+      ok: false,
+      error: 'discord_channel_access_role_required',
+      required_role_id: CHANNEL_ACCESS_ROLES.executive
+    }
+  );
+
+  assert.equal(validatePublishRouting('doj', {
+    channel_id: config.channels.executive,
+    ping_keys: [],
+    ping_everyone: false
+  }, config, [CHANNEL_ACCESS_ROLES.executive]).ok, true);
 });
 
 test('legislative and judicial identities route to branch feeds', () => {
