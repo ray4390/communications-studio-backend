@@ -39,6 +39,7 @@ export const IDENTITY_LOGO_FILES = Object.freeze({
   "uscp_oig": "Emblem of the United States Capitol Police.svg",
   "judiciary": "US-Courts-AdministrativeOffice-Seal.svg",
   "supreme_court": "Seal of the United States Supreme Court.svg",
+  "ulpa": "https://raw.githubusercontent.com/nationalarchivesusar/communications-studio/main/assets/identity-logos/ulpa.png",
   "fec": "Seal of the United States Federal Election Commission.svg",
   "nara": "Seal of the United States National Archives and Records Administration.svg"
 });
