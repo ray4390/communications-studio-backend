@@ -26,7 +26,7 @@ const ALL_BRANCH_PINGS = Object.freeze(['executive', 'white_house', 'legislative
 const WHITE_HOUSE = new Set(['white_house', 'eop', 'whmo']);
 const OVP = new Set(['ovp']);
 const LEGISLATIVE = new Set(['house', 'senate', 'uscp', 'uscp_oig']);
-const JUDICIAL = new Set(['judiciary', 'supreme_court']);
+const JUDICIAL = new Set(['judiciary', 'supreme_court', 'ulpa']);
 
 function discordRoleSet(discordRoleIds = []) {
   return new Set((Array.isArray(discordRoleIds) ? discordRoleIds : [...discordRoleIds || []]).map(String));
