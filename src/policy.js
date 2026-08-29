@@ -1,3 +1,5 @@
+import { CHANNEL_ACCESS_ROLES, routingPolicy } from './routing.js';
+
 const R = (groupId, roles) => ({ type: 'roblox', groupId: String(groupId), roles });
 const D = (roles) => ({ type: 'discord', roles: roles.map(String) });
 
@@ -83,6 +85,14 @@ function robloxRoleMap(groupRoles = []) {
   return map;
 }
 
+function hasRequiredDiscordChannelAccess(identity, discordRoleIds = []) {
+  const discordRoles = new Set((discordRoleIds || []).map(String));
+  const requiredRoles = routingPolicy(identity.id).channelKeys
+    .map((key) => CHANNEL_ACCESS_ROLES[key])
+    .filter(Boolean);
+  return requiredRoles.length === 0 || requiredRoles.some((roleId) => discordRoles.has(roleId));
+}
+
 export function qualifies(identity, authz = {}) {
   if (!identity?.access) return false;
   if (identity.access.type === 'discord') {
@@ -91,6 +101,7 @@ export function qualifies(identity, authz = {}) {
   }
   if (identity.access.type === 'roblox') {
     if (!authz.robloxUserId) return false;
+    if (!hasRequiredDiscordChannelAccess(identity, authz.discordRoleIds)) return false;
     const roles = robloxRoleMap(authz.robloxGroupRoles);
     return identity.access.roles.includes(roles.get(String(identity.access.groupId)));
   }
