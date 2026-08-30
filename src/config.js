@@ -47,7 +47,10 @@ export const config = Object.freeze({
   cookieSecure: bool(process.env.COOKIE_SECURE, publicBaseUrl.startsWith('https://')),
   cookieSameSite: process.env.COOKIE_SAME_SITE || (frontendOrigin === new URL(publicBaseUrl).origin ? 'lax' : 'none'),
   requireDiscord: bool(process.env.REQUIRE_DISCORD, true),
-  authzCacheSeconds: int(process.env.AUTHZ_CACHE_SECONDS, 300),
+  // Publishing authorization should track Discord/Roblox role changes promptly.
+  // Keep a tiny cache to avoid duplicate upstream requests during one UI render,
+  // but never allow an environment override to leave permissions stale for minutes.
+  authzCacheSeconds: Math.max(0, Math.min(int(process.env.AUTHZ_CACHE_SECONDS, 5), 5)),
   discord: {
     clientId: process.env.DISCORD_CLIENT_ID || '',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || '',
