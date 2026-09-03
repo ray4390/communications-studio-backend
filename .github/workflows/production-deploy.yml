@@ -64,6 +64,9 @@ jobs:
     env:
       CONTROL: /usr/local/bin/communications-studio-systemd-control
       SENTINEL: /home/deploy/.communications-studio-autodeploy-enabled
+      PUBLIC_API_BASE: https://ray-500-c60.tail6f3caa.ts.net
+      LEGACY_PUBLIC_API_BASE: https://ray-500-c60.tail6f3caa.ts.net:10000
+      FRONTEND_ORIGIN: https://nationalarchivesusar.github.io
     steps:
       - name: Verify production activation
         id: activation
@@ -78,6 +81,64 @@ jobs:
             echo 'Communications Studio production auto-deploy is disabled; deployment will be skipped.'
           fi
 
+      - name: Verify current public login route
+        if: steps.activation.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_route() {
+            local label="$1"
+            local base="$2"
+            local body headers auth_code
+
+            echo "Checking $label public route: $base"
+            body="$(curl --fail --silent --show-error \
+              --retry 3 --retry-delay 2 --retry-all-errors \
+              --connect-timeout 5 --max-time 20 \
+              "$base/health")"
+            printf '%s' "$body" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' || {
+              echo "$label health endpoint did not report ok=true." >&2
+              printf '%s\n' "$body" >&2
+              return 1
+            }
+
+            headers="$(mktemp)"
+            trap 'rm -f "$headers"' RETURN
+            curl --fail --silent --show-error \
+              --retry 3 --retry-delay 2 --retry-all-errors \
+              --connect-timeout 5 --max-time 20 \
+              -H "Origin: $FRONTEND_ORIGIN" \
+              -D "$headers" -o /dev/null \
+              "$base/auth/session"
+            tr -d '\r' < "$headers" | grep -Fqi "access-control-allow-origin: $FRONTEND_ORIGIN" || {
+              echo "$label is missing the expected CORS origin for the GitHub Pages frontend." >&2
+              return 1
+            }
+            tr -d '\r' < "$headers" | grep -Fqi 'access-control-allow-credentials: true' || {
+              echo "$label is missing Access-Control-Allow-Credentials: true." >&2
+              return 1
+            }
+
+            auth_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --connect-timeout 5 --max-time 20 --max-redirs 0 \
+              "$base/auth/discord?return_to=https%3A%2F%2Fnationalarchivesusar.github.io%2Fcommunications-studio%2F")"
+            case "$auth_code" in
+              301|302|303|307|308) ;;
+              *) echo "$label Discord OAuth entrypoint returned HTTP $auth_code instead of a redirect." >&2; return 1 ;;
+            esac
+
+            echo "$label public login route passed health, CORS, and OAuth-entry checks."
+            rm -f "$headers"
+            trap - RETURN
+          }
+
+          # The frontend currently targets the historical :10000 endpoint, so it
+          # is the required gate. Keep the bare 443 route healthy as the supported
+          # fallback documented by the production runbook.
+          check_route 'frontend-configured' "$LEGACY_PUBLIC_API_BASE"
+          check_route 'bare-host' "$PUBLIC_API_BASE"
+
       - name: Deploy exact validated commit
         if: steps.activation.outputs.enabled == 'true'
         shell: bash
@@ -89,6 +150,20 @@ jobs:
           sudo "$CONTROL" status
           sudo "$CONTROL" logs
           echo 'Production health gate passed.'
+
+      - name: Verify deployed public login route
+        if: steps.activation.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for base in "$LEGACY_PUBLIC_API_BASE" "$PUBLIC_API_BASE"; do
+            echo "Rechecking public health after deployment: $base"
+            curl --fail --silent --show-error \
+              --retry 3 --retry-delay 2 --retry-all-errors \
+              --connect-timeout 5 --max-time 20 \
+              "$base/health" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+          done
+          echo 'Public Communications Studio routes remained healthy after deployment.'
 
       - name: Capture service logs on failure
         if: failure() && steps.activation.outputs.enabled == 'true'
@@ -111,10 +186,10 @@ jobs:
             description='Production auto-deploy activation is disabled'
           elif [ "$DEPLOY_JOB_STATUS" = 'success' ]; then
             state='success'
-            description='Production systemd health gate passed'
+            description='Production systemd and public login health gates passed'
           else
             state='failure'
-            description='Production deploy or health gate failed'
+            description='Production deploy or public login health gate failed'
           fi
           payload=$(printf '{"state":"%s","context":"production-deploy","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$state" "$description" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           curl --fail-with-body --retry 3 --retry-all-errors \
