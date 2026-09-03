@@ -112,7 +112,7 @@ jobs:
               -D "$headers" -o /dev/null \
               "$base/auth/session"
             tr -d '\r' < "$headers" | grep -Fqi "access-control-allow-origin: $FRONTEND_ORIGIN" || {
-              echo "$label is missing the expected CORS origin for the GitHub Pages frontend." >&2
+              echo "$label is missing the expected CORS origin for the GitHub Pages compatibility frontend." >&2
               return 1
             }
             tr -d '\r' < "$headers" | grep -Fqi 'access-control-allow-credentials: true' || {
@@ -133,10 +133,7 @@ jobs:
             trap - RETURN
           }
 
-          # The frontend currently targets the historical :10000 endpoint, so it
-          # is the required gate. Keep the bare 443 route healthy as the supported
-          # fallback documented by the production runbook.
-          check_route 'frontend-configured' "$LEGACY_PUBLIC_API_BASE"
+          check_route 'legacy-port' "$LEGACY_PUBLIC_API_BASE"
           check_route 'bare-host' "$PUBLIC_API_BASE"
 
       - name: Deploy exact validated commit
@@ -151,7 +148,7 @@ jobs:
           sudo "$CONTROL" logs
           echo 'Production health gate passed.'
 
-      - name: Verify deployed public login route
+      - name: Verify deployed same-origin Studio
         if: steps.activation.outputs.enabled == 'true'
         shell: bash
         run: |
@@ -162,8 +159,17 @@ jobs:
               --retry 3 --retry-delay 2 --retry-all-errors \
               --connect-timeout 5 --max-time 20 \
               "$base/health" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+
+            echo "Checking same-origin Studio document: $base/"
+            studio="$(curl --fail --silent --show-error \
+              --retry 3 --retry-delay 2 --retry-all-errors \
+              --connect-timeout 5 --max-time 20 \
+              "$base/")"
+            printf '%s' "$studio" | grep -Fq '<div id="app"'
+            printf '%s' "$studio" | grep -Fq '<base href="https://nationalarchivesusar.github.io/communications-studio/"'
+            printf '%s' "$studio" | grep -Fq 'src="./config.js"'
           done
-          echo 'Public Communications Studio routes remained healthy after deployment.'
+          echo 'Same-origin Communications Studio and public API routes are healthy.'
 
       - name: Capture service logs on failure
         if: failure() && steps.activation.outputs.enabled == 'true'
@@ -186,10 +192,10 @@ jobs:
             description='Production auto-deploy activation is disabled'
           elif [ "$DEPLOY_JOB_STATUS" = 'success' ]; then
             state='success'
-            description='Production systemd and public login health gates passed'
+            description='Production same-origin Studio and health gates passed'
           else
             state='failure'
-            description='Production deploy or public login health gate failed'
+            description='Production deploy or same-origin Studio gate failed'
           fi
           payload=$(printf '{"state":"%s","context":"production-deploy","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$state" "$description" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           curl --fail-with-body --retry 3 --retry-all-errors \
