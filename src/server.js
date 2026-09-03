@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { config, validateRuntimeConfig } from './config.js';
 import { publicServiceStatus } from './status.js';
+import { renderStudioPage, studioContentSecurityPolicy } from './studio-page.js';
 import {
   accountsForUser,
   createAppSession,
@@ -297,7 +298,11 @@ function serviceStatus() {
   });
 }
 
-app.get('/', (_req, res) => res.json(serviceStatus()));
+app.get('/', (_req, res) => {
+  res.set('Content-Security-Policy', studioContentSecurityPolicy());
+  res.set('Cache-Control', 'no-store');
+  res.type('html').send(renderStudioPage());
+});
 app.get('/health', (_req, res) => res.json(serviceStatus()));
 
 app.get('/auth/session', async (req, res, next) => {
