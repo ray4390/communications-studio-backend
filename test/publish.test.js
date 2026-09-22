@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDiscordPublishPayload, collectBodyMentions, includeBodyMentions, validatePublishDocument } from '../src/publish.js';
+import { buildDiscordPublishPayload, collectBodyMentions, includeBodyMentions, publishToDiscord, validatePublishDocument } from '../src/publish.js';
+import { config } from '../src/config.js';
 
 function documentFixture() {
   return {
@@ -125,4 +126,87 @@ test('body mentions cannot bypass the office role and everyone policy', async ()
   await assert.rejects(includeBodyMentions(options), { code: 'everyone_not_authorized' });
   document.containers[0].children[0].content = '<@234567890123456789>';
   await assert.rejects(includeBodyMentions({ ...options, lookupMember: async () => null }), { code: 'user_mention_not_in_guild' });
+});
+
+test('a plain bot role ping is sent before the container and the container does not ping the role again', async () => {
+  const document = documentFixture();
+  document._publish_confirmation = 'explicit-user-confirmation';
+  document._publish_action = 'publish-now-button';
+  const channel_id = '987654321098765432';
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  const originalToken = config.discord.botToken;
+  config.discord.botToken = 'test-bot-token';
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, method: options.method || 'GET', body: options.body && JSON.parse(options.body), authorization: options.headers?.Authorization });
+    const data = url.endsWith('/webhooks')
+      ? [{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]
+      : url.endsWith('/messages')
+        ? { id: '567890123456789012', mention_roles: routing.allowed_mentions.roles }
+        : { id: '678901234567890123', channel_id };
+    return new Response(JSON.stringify(data), { status: 200 });
+  };
+  try {
+    const published = await publishToDiscord({ document, identity, routing: { ...routing, channel_id } });
+    assert.equal(published.message_id, '678901234567890123');
+    assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'POST']);
+    assert.equal(requests[1].authorization, 'Bot test-bot-token');
+    assert.equal(requests[1].body.content, '<@&937155572342587392>');
+    assert.deepEqual(requests[1].body.allowed_mentions.roles, ['937155572342587392']);
+    assert.deepEqual(requests[2].body.allowed_mentions.roles, []);
+    assert.match(requests[2].body.components[0].components[0].content, /<@&937155572342587392>/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.discord.botToken = originalToken;
+  }
+});
+
+test('an unrecognized role ping stops publication and removes the standalone message', async () => {
+  const document = documentFixture();
+  document._publish_confirmation = 'explicit-user-confirmation';
+  document._publish_action = 'publish-now-button';
+  const channel_id = '876543210987654321';
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  const originalToken = config.discord.botToken;
+  config.discord.botToken = 'test-bot-token';
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, method: options.method || 'GET' });
+    if (url.endsWith('/webhooks')) return new Response(JSON.stringify([{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]));
+    if (url.endsWith('/messages')) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: [] }));
+    if (options.method === 'DELETE') return new Response(null, { status: 204 });
+    throw new Error('The container must not be sent after a failed role ping');
+  };
+  try {
+    await assert.rejects(publishToDiscord({ document, identity, routing: { ...routing, channel_id } }), { code: 'discord_role_ping_not_recognized' });
+    assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'DELETE']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.discord.botToken = originalToken;
+  }
+});
+
+test('a rejected container send removes the preceding bot role ping', async () => {
+  const document = documentFixture();
+  document._publish_confirmation = 'explicit-user-confirmation';
+  document._publish_action = 'publish-now-button';
+  const channel_id = '765432109876543210';
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  const originalToken = config.discord.botToken;
+  config.discord.botToken = 'test-bot-token';
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push(options.method || 'GET');
+    if (url.endsWith('/webhooks')) return new Response(JSON.stringify([{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]));
+    if (url.endsWith('/messages')) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: routing.allowed_mentions.roles }));
+    if (options.method === 'DELETE') return new Response(null, { status: 204 });
+    return new Response(JSON.stringify({ message: 'Invalid Form Body' }), { status: 400 });
+  };
+  try {
+    await assert.rejects(publishToDiscord({ document, identity, routing: { ...routing, channel_id } }), { code: 'discord_publish_failed' });
+    assert.deepEqual(requests, ['GET', 'POST', 'POST', 'DELETE']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.discord.botToken = originalToken;
+  }
 });
