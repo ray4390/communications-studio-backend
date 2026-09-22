@@ -59,6 +59,44 @@ export function validatePublishDocument(document) {
   return null;
 }
 
+export function collectBodyMentions(document) {
+  const users = new Set();
+  const roles = new Set();
+  let everyone = false;
+  for (const child of document?.containers?.[0]?.children || []) {
+    const texts = child?.kind === 'text' ? [child.content] : child?.kind === 'section' ? child.texts : [];
+    for (const content of Array.isArray(texts) ? texts : []) {
+      const value = String(content || '');
+      for (const match of value.matchAll(/<@!?([0-9]{5,25})>/g)) users.add(match[1]);
+      for (const match of value.matchAll(/<@&([0-9]{5,25})>/g)) roles.add(match[1]);
+      if (/(^|[^\w])@(everyone|here)\b/i.test(value)) everyone = true;
+    }
+  }
+  return { users: [...users], roles: [...roles], everyone };
+}
+
+export async function includeBodyMentions({ document, routing, permittedRoleIds, allowEveryone, lookupMember }) {
+  const body = collectBodyMentions(document);
+  if (body.roles.some((id) => !permittedRoleIds.includes(id))) throw publishError('ping_not_authorized', 403);
+  if (body.everyone && !allowEveryone) throw publishError('everyone_not_authorized', 403);
+
+  const users = [...new Set([...(routing.allowed_mentions.users || []).map(String), ...body.users])];
+  if (users.length > 25) throw publishError('too_many_user_mentions', 400);
+  if (users.length) {
+    const members = await Promise.all(users.map((id) => lookupMember(id)));
+    if (members.some((member) => !member)) throw publishError('user_mention_not_in_guild', 400);
+  }
+  return {
+    ...routing,
+    ping_everyone: routing.ping_everyone || body.everyone,
+    allowed_mentions: {
+      ...routing.allowed_mentions,
+      users,
+      roles: [...new Set([...(routing.allowed_mentions.roles || []).map(String), ...body.roles])]
+    }
+  };
+}
+
 function buttonPayload(button) {
   const style = Number(button?.style) || 2;
   if (![1, 2, 3, 4, 5, 6].includes(style)) throw publishError('invalid_button_style', 400);

@@ -67,7 +67,7 @@ export function renderStudioPage() {
   <script src="./studio-framing-4.js?v=20260819-0007"></script>
   <script src="./ulpa-identity.js?v=20260829-0118"></script>
   <script src="./studio-export.js?v=20260818-2200"></script>
-  <script src="./studio-publish.js?v=20260818-2358"></script>
+  <script src="./studio-publish.js?v=20260922-mentions"></script>
   <script src="./app-13.js?v=20260818-2142"></script>
 </body>
 </html>`;
