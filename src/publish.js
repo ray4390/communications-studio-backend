@@ -359,16 +359,14 @@ async function executeWebhook(channelId, payload, retry = true) {
   }
 }
 
-async function sendRolePing(channelId, roleIds) {
+async function sendRolePing(channelId, roleIds, appearance) {
   let message;
   try {
-    message = await discordJson(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: botHeaders(),
-      body: JSON.stringify({
-        content: roleIds.map((id) => `<@&${id}>`).join(' '),
-        allowed_mentions: { parse: [], roles: roleIds, users: [], replied_user: false }
-      })
+    message = await executeWebhook(channelId, {
+      content: roleIds.map((id) => `<@&${id}>`).join(' '),
+      allowed_mentions: { parse: [], roles: roleIds, users: [], replied_user: false },
+      username: appearance.username,
+      ...(appearance.avatar_url ? { avatar_url: appearance.avatar_url } : {})
     });
   } catch (error) {
     throw publishError('discord_role_ping_failed', 502, error);
@@ -385,9 +383,10 @@ async function sendRolePing(channelId, roleIds) {
 
 async function deleteRolePing(channelId, messageId) {
   try {
-    await discordJson(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+    const webhook = await findOrCreateWebhook(channelId);
+    await discordJson(`https://discord.com/api/v10/webhooks/${webhook.id}/${webhook.token}/messages/${messageId}`, {
       method: 'DELETE',
-      headers: botHeaders()
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     console.error('Could not remove the role ping after publication failed:', error.code || error.message);
@@ -400,7 +399,7 @@ export async function publishToDiscord({ document, identity, routing, robloxUser
   // Check the webhook before notifying a role, so a missing webhook permission
   // cannot leave a standalone ping with no announcement behind it.
   await findOrCreateWebhook(routing.channel_id);
-  const rolePingId = roleIds.length ? await sendRolePing(routing.channel_id, roleIds) : null;
+  const rolePingId = roleIds.length ? await sendRolePing(routing.channel_id, roleIds, payload) : null;
   if (rolePingId) payload.allowed_mentions.roles = [];
   let message;
   try {
