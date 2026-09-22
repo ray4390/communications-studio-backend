@@ -15,8 +15,8 @@ import {
   updateAccountMetadata
 } from './db.js';
 import { authorizedIdentities, getIdentity } from './policy.js';
-import { enrichIdentityRouting, validatePublishRouting } from './routing.js';
-import { publishToDiscord } from './publish.js';
+import { enrichIdentityRouting, publicRouting, validatePublishRouting } from './routing.js';
+import { includeBodyMentions, publishToDiscord } from './publish.js';
 import {
   discordAuthorizeUrl,
   discordBotGuildMember,
@@ -517,19 +517,24 @@ app.post('/api/publish', async (req, res, next) => {
     )];
     if (requestedUserPingIds.length > 25) return res.status(400).json({ error: 'too_many_user_mentions' });
     if (requestedUserPingIds.some((id) => !/^\d{5,25}$/.test(id))) return res.status(400).json({ error: 'invalid_user_mention' });
-    if (requestedUserPingIds.length) {
-      const members = await Promise.all(requestedUserPingIds.map((id) => discordBotGuildMember(id)));
-      if (members.some((member) => !member)) return res.status(400).json({ error: 'user_mention_not_in_guild' });
-    }
     routing.allowed_mentions.users = requestedUserPingIds;
 
     const documentError = validateBuilderDocument(req.body?.builder_document);
     if (documentError) return res.status(400).json({ error: documentError });
 
+    const mentionPolicy = publicRouting(identityId, config);
+    const resolvedRouting = await includeBodyMentions({
+      document: req.body.builder_document,
+      routing,
+      permittedRoleIds: mentionPolicy.ping_options.map((ping) => ping.id),
+      allowEveryone: mentionPolicy.allow_everyone,
+      lookupMember: discordBotGuildMember
+    });
+
     const published = await publishToDiscord({
       document: req.body.builder_document,
       identity: publishingIdentity,
-      routing,
+      routing: resolvedRouting,
       robloxUsername: authz.accounts.roblox?.username || '',
       discordUsername: authz.accounts.discord?.username || ''
     });

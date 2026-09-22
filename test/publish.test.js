@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDiscordPublishPayload, validatePublishDocument } from '../src/publish.js';
+import { buildDiscordPublishPayload, collectBodyMentions, includeBodyMentions, validatePublishDocument } from '../src/publish.js';
 
 function documentFixture() {
   return {
@@ -88,4 +88,41 @@ test('server renders authoritative Components V2 framing after confirmation', ()
   assert.match(footer, /-# RobloxTestUser/);
   assert.match(footer, /Attorney General of the United States/);
   assert.match(footer, /-# Posted by @discord\.test/);
+});
+
+test('mentions in container text and section text are included in the Discord whitelist', async () => {
+  const document = documentFixture();
+  document.containers[0].children = [
+    { kind: 'text', content: 'Attention <@&937155572342587392> and <@!234567890123456789>.' },
+    { kind: 'section', texts: ['Also <@345678901234567890> and @here.'], accessory: { kind: 'thumbnail', url: 'https://example.com/icon.png' } }
+  ];
+  document._publish_confirmation = 'explicit-user-confirmation';
+  document._publish_action = 'publish-now-button';
+  assert.deepEqual(collectBodyMentions(document), {
+    users: ['234567890123456789', '345678901234567890'],
+    roles: ['937155572342587392'],
+    everyone: true
+  });
+  const checked = [];
+  const resolved = await includeBodyMentions({
+    document, routing, permittedRoleIds: ['937155572342587392'], allowEveryone: true,
+    lookupMember: async (id) => { checked.push(id); return { id }; }
+  });
+  assert.deepEqual(checked, ['123456789012345678', '234567890123456789', '345678901234567890']);
+  const payload = buildDiscordPublishPayload({ document, identity, routing: resolved });
+  assert.deepEqual(payload.allowed_mentions.roles, ['937155572342587392']);
+  assert.deepEqual(payload.allowed_mentions.users, checked);
+  assert.deepEqual(payload.allowed_mentions.parse, ['everyone']);
+  assert.match(payload.components[0].components[1].content, /<@&937155572342587392>/);
+});
+
+test('body mentions cannot bypass the office role and everyone policy', async () => {
+  const document = documentFixture();
+  const options = { document, routing, permittedRoleIds: ['937155572342587392'], allowEveryone: false, lookupMember: async () => ({}) };
+  document.containers[0].children[0].content = '<@&999999999999999999>';
+  await assert.rejects(includeBodyMentions(options), { code: 'ping_not_authorized' });
+  document.containers[0].children[0].content = '@everyone';
+  await assert.rejects(includeBodyMentions(options), { code: 'everyone_not_authorized' });
+  document.containers[0].children[0].content = '<@234567890123456789>';
+  await assert.rejects(includeBodyMentions({ ...options, lookupMember: async () => null }), { code: 'user_mention_not_in_guild' });
 });
