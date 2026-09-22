@@ -359,9 +359,56 @@ async function executeWebhook(channelId, payload, retry = true) {
   }
 }
 
+async function sendRolePing(channelId, roleIds) {
+  let message;
+  try {
+    message = await discordJson(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: botHeaders(),
+      body: JSON.stringify({
+        content: roleIds.map((id) => `<@&${id}>`).join(' '),
+        allowed_mentions: { parse: [], roles: roleIds, users: [], replied_user: false }
+      })
+    });
+  } catch (error) {
+    throw publishError('discord_role_ping_failed', 502, error);
+  }
+  const messageId = String(message?.id || '');
+  if (!messageId) throw publishError('discord_role_ping_failed', 502);
+  const mentionedRoles = new Set((message.mention_roles || []).map(String));
+  if (roleIds.some((id) => !mentionedRoles.has(id))) {
+    await deleteRolePing(channelId, messageId);
+    throw publishError('discord_role_ping_not_recognized', 409);
+  }
+  return messageId;
+}
+
+async function deleteRolePing(channelId, messageId) {
+  try {
+    await discordJson(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: botHeaders()
+    });
+  } catch (error) {
+    console.error('Could not remove the role ping after publication failed:', error.code || error.message);
+  }
+}
+
 export async function publishToDiscord({ document, identity, routing, robloxUsername, discordUsername }) {
   const payload = buildDiscordPublishPayload({ document, identity, routing, robloxUsername, discordUsername });
-  const message = await executeWebhook(routing.channel_id, payload);
+  const roleIds = [...new Set(payload.allowed_mentions.roles)];
+  // Check the webhook before notifying a role, so a missing webhook permission
+  // cannot leave a standalone ping with no announcement behind it.
+  await findOrCreateWebhook(routing.channel_id);
+  const rolePingId = roleIds.length ? await sendRolePing(routing.channel_id, roleIds) : null;
+  if (rolePingId) payload.allowed_mentions.roles = [];
+  let message;
+  try {
+    message = await executeWebhook(routing.channel_id, payload);
+  } catch (error) {
+    if (rolePingId) await deleteRolePing(routing.channel_id, rolePingId);
+    throw error;
+  }
   const messageId = String(message?.id || '');
   if (!messageId) throw publishError('discord_publish_response_invalid', 502);
   return {
