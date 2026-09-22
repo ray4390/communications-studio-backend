@@ -128,7 +128,7 @@ test('body mentions cannot bypass the office role and everyone policy', async ()
   await assert.rejects(includeBodyMentions({ ...options, lookupMember: async () => null }), { code: 'user_mention_not_in_guild' });
 });
 
-test('a plain bot role ping is sent before the container and the container does not ping the role again', async () => {
+test('a plain webhook role ping is sent before the container and the container does not ping the role again', async () => {
   const document = documentFixture();
   document._publish_confirmation = 'explicit-user-confirmation';
   document._publish_action = 'publish-now-button';
@@ -136,12 +136,13 @@ test('a plain bot role ping is sent before the container and the container does 
   const requests = [];
   const originalFetch = globalThis.fetch;
   const originalToken = config.discord.botToken;
+  let webhookPosts = 0;
   config.discord.botToken = 'test-bot-token';
   globalThis.fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET', body: options.body && JSON.parse(options.body), authorization: options.headers?.Authorization });
     const data = url.endsWith('/webhooks')
       ? [{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]
-      : url.endsWith('/messages')
+      : ++webhookPosts === 1
         ? { id: '567890123456789012', mention_roles: routing.allowed_mentions.roles }
         : { id: '678901234567890123', channel_id };
     return new Response(JSON.stringify(data), { status: 200 });
@@ -150,8 +151,9 @@ test('a plain bot role ping is sent before the container and the container does 
     const published = await publishToDiscord({ document, identity, routing: { ...routing, channel_id } });
     assert.equal(published.message_id, '678901234567890123');
     assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'POST']);
-    assert.equal(requests[1].authorization, 'Bot test-bot-token');
+    assert.match(requests[1].url, /\/webhooks\/456789012345678901\/webhook-token/);
     assert.equal(requests[1].body.content, '<@&937155572342587392>');
+    assert.equal(requests[1].body.username, 'United States Department of Justice');
     assert.deepEqual(requests[1].body.allowed_mentions.roles, ['937155572342587392']);
     assert.deepEqual(requests[2].body.allowed_mentions.roles, []);
     assert.match(requests[2].body.components[0].components[0].content, /<@&937155572342587392>/);
@@ -173,8 +175,8 @@ test('an unrecognized role ping stops publication and removes the standalone mes
   globalThis.fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET' });
     if (url.endsWith('/webhooks')) return new Response(JSON.stringify([{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]));
-    if (url.endsWith('/messages')) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: [] }));
     if (options.method === 'DELETE') return new Response(null, { status: 204 });
+    if (requests.length === 2) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: [] }));
     throw new Error('The container must not be sent after a failed role ping');
   };
   try {
@@ -186,7 +188,7 @@ test('an unrecognized role ping stops publication and removes the standalone mes
   }
 });
 
-test('a rejected container send removes the preceding bot role ping', async () => {
+test('a rejected container send removes the preceding webhook role ping', async () => {
   const document = documentFixture();
   document._publish_confirmation = 'explicit-user-confirmation';
   document._publish_action = 'publish-now-button';
@@ -198,8 +200,8 @@ test('a rejected container send removes the preceding bot role ping', async () =
   globalThis.fetch = async (url, options = {}) => {
     requests.push(options.method || 'GET');
     if (url.endsWith('/webhooks')) return new Response(JSON.stringify([{ id: '456789012345678901', token: 'webhook-token', type: 1, name: 'Communications Studio Publisher' }]));
-    if (url.endsWith('/messages')) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: routing.allowed_mentions.roles }));
     if (options.method === 'DELETE') return new Response(null, { status: 204 });
+    if (requests.length === 2) return new Response(JSON.stringify({ id: '567890123456789012', mention_roles: routing.allowed_mentions.roles }));
     return new Response(JSON.stringify({ message: 'Invalid Form Body' }), { status: 400 });
   };
   try {
