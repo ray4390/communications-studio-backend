@@ -64,8 +64,8 @@ jobs:
     env:
       CONTROL: /usr/local/bin/communications-studio-systemd-control
       SENTINEL: /home/deploy/.communications-studio-autodeploy-enabled
-      PUBLIC_API_BASE: https://ray-500-c60.tail6f3caa.ts.net
-      LEGACY_PUBLIC_API_BASE: https://ray-500-c60.tail6f3caa.ts.net:10000
+      PUBLIC_API_BASE: https://ray-optiplex.tail6f3caa.ts.net:10000
+      LEGACY_PUBLIC_API_BASE: https://ray-optiplex.tail6f3caa.ts.net/communications-studio-api
       FRONTEND_ORIGIN: https://nationalarchivesusar.github.io
     steps:
       - name: Verify production activation
@@ -133,8 +133,8 @@ jobs:
             trap - RETURN
           }
 
-          check_route 'legacy-port' "$LEGACY_PUBLIC_API_BASE"
-          check_route 'bare-host' "$PUBLIC_API_BASE"
+          check_route 'legacy-path' "$LEGACY_PUBLIC_API_BASE"
+          check_route 'dedicated-port' "$PUBLIC_API_BASE"
 
       - name: Deploy exact validated commit
         if: steps.activation.outputs.enabled == 'true'
