@@ -182,7 +182,7 @@ async function freshAuthorization(userId, { forceDiscord = false, forceRoblox = 
   }
 
   let robloxRoles = Array.isArray(roblox?.metadata?.group_roles)
-    ? discord.metadata.group_roles
+    ? roblox.metadata.group_roles
     : [];
 
   if (roblox) {
