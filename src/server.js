@@ -59,8 +59,14 @@ function cookieOptions({ maxAge } = {}) {
   };
 }
 
+function bearerSessionToken(req) {
+  const header = String(req.headers.authorization || '').trim();
+  const match = header.match(/^Bearer\s+([A-Za-z0-9_-]+)$/i);
+  return match?.[1] || '';
+}
+
 function sessionFromRequest(req) {
-  const raw = parseCookies(req)[config.sessionCookie];
+  const raw = bearerSessionToken(req) || parseCookies(req)[config.sessionCookie];
   const row = readAppSession(raw);
   return row ? { ...row, rawToken: raw } : null;
 }
@@ -76,6 +82,15 @@ function safeReturnTo(raw) {
   } catch {
     return fallback;
   }
+}
+
+function sessionReturnTo(returnTo, sessionToken) {
+  const url = new URL(returnTo);
+  const backendOrigin = new URL(config.publicBaseUrl).origin;
+  if (url.origin !== backendOrigin) {
+    url.hash = `cs_auth=${encodeURIComponent(sessionToken)}`;
+  }
+  return url.toString();
 }
 
 function setSessionCookie(res, token, expiresAt) {
@@ -408,7 +423,7 @@ app.get('/auth/discord/callback', async (req, res, next) => {
 
     const session = createAppSession(userId);
     setSessionCookie(res, session.token, session.expiresAt);
-    res.redirect(stored.return_to);
+    res.redirect(sessionReturnTo(stored.return_to, session.token));
   } catch (error) {
     next(error);
   }
@@ -464,7 +479,7 @@ app.get('/auth/roblox/callback', async (req, res, next) => {
 
     const session = createAppSession(userId);
     setSessionCookie(res, session.token, session.expiresAt);
-    res.redirect(stored.return_to);
+    res.redirect(sessionReturnTo(stored.return_to, session.token));
   } catch (error) {
     next(error);
   }
